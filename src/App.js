@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import imageCompression from "browser-image-compression";
 
@@ -16,46 +16,57 @@ export default function App() {
   const [toast, setToast] = useState(null);
 
   /* ---------- Toast ---------- */
-  const showToast = (type, message) => {
+  const showToast = useCallback((type, message) => {
     setToast({ type, message });
     setTimeout(() => setToast(null), 2500);
-  };
-
-  /* ---------- File Handling ---------- */
-  const addFiles = (incoming) => {
-    const images = incoming.filter((f) => f.type.startsWith("image/"));
-    if (!images.length) return;
-    setFiles((prev) => [...prev, ...images]);
-    showToast("success", `${images.length} image(s) added`);
-  };
-
-  const removeFile = (index) => {
-    setFiles((prev) => prev.filter((_, i) => i !== index));
-  };
-
-  const handleDrop = (e) => {
-    e.preventDefault();
-    addFiles(Array.from(e.dataTransfer.files));
-  };
-
-  useEffect(() => {
-    const onPaste = (e) => addFiles(Array.from(e.clipboardData.files || []));
-    window.addEventListener("paste", onPaste);
-    return () => window.removeEventListener("paste", onPaste);
   }, []);
 
+  /* ---------- File Handling ---------- */
+  const addFiles = useCallback(
+    (incoming) => {
+      const images = incoming.filter((f) => f.type.startsWith("image/"));
+      if (!images.length) return;
+
+      setFiles((prev) => [...prev, ...images]);
+      showToast("success", `${images.length} image(s) added`);
+    },
+    [showToast],
+  );
+
+  const removeFile = useCallback((index) => {
+    setFiles((prev) => prev.filter((_, i) => i !== index));
+  }, []);
+
+  const handleDrop = useCallback(
+    (e) => {
+      e.preventDefault();
+      addFiles(Array.from(e.dataTransfer.files));
+    },
+    [addFiles],
+  );
+
+  /* ---------- Paste Support ---------- */
+  useEffect(() => {
+    const onPaste = (e) => {
+      addFiles(Array.from(e.clipboardData.files || []));
+    };
+
+    window.addEventListener("paste", onPaste);
+    return () => window.removeEventListener("paste", onPaste);
+  }, [addFiles]);
+
   /* ---------- Download ---------- */
-  const downloadBlob = (blob, filename) => {
+  const downloadBlob = useCallback((blob, filename) => {
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
     a.download = filename;
     a.click();
     URL.revokeObjectURL(url);
-  };
+  }, []);
 
-  /* ---------- Process ---------- */
-  const processImages = async () => {
+  /* ---------- Process Images ---------- */
+  const processImages = useCallback(async () => {
     if (!files.length) {
       showToast("error", "No images selected");
       return;
@@ -81,19 +92,19 @@ export default function App() {
                 : 1,
         };
 
-        const out = await imageCompression(file, options);
+        const output = await imageCompression(file, options);
         const ext = format.split("/")[1];
-        const name = file.name.replace(/\.[^/.]+$/, "");
-        downloadBlob(out, `${name}.${ext}`);
+        const base = file.name.replace(/\.[^/.]+$/, "");
+        downloadBlob(output, `${base}.${ext}`);
       }
 
       showToast("success", "Downloads started");
     } catch {
-      showToast("error", "Something broke");
+      showToast("error", "Something went wrong");
     } finally {
       setProcessing(false);
     }
-  };
+  }, [files, format, lossless, downloadBlob, showToast]);
 
   /* ---------- UI ---------- */
   return (
@@ -124,18 +135,15 @@ export default function App() {
         )}
       </AnimatePresence>
 
-      {/* Main Card */}
+      {/* Card */}
       <motion.div
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.45, ease: "easeOut" }}
         className="w-full max-w-xl rounded-3xl bg-white shadow-xl p-6 space-y-6"
       >
-        {/* Header */}
         <div>
-          <h1 className="text-2xl font-semibold tracking-tight">
-            Image Compressor
-          </h1>
+          <h1 className="text-2xl font-semibold">Image Compressor</h1>
           <p className="text-sm text-slate-500">
             Drag, paste or drop images. Remove mistakes instantly.
           </p>
